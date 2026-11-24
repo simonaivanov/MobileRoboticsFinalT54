@@ -1,6 +1,6 @@
 """Global navigation: shortest obstacle-free path for the Thymio (visibility graph + A*).
 
-Frame: origin bottom-left, x right, y up, units mm.
+Frame: origin top-left, x right, y down, units mm
 """
 
 import math
@@ -119,7 +119,7 @@ def plan_path(obstacles, thymio_pos, goal, arena_w, arena_h, algo="A*"):
     goal       : (x, y) in mm
     Returns a dict: "waypoints", "length", "error" + intermediate steps for plotting.
     """
-    thymio_pos = tuple(map(float, thymio_pos))
+    thymio_pos = tuple(map(float, thymio_pos[:2]))   # keep (x, y), drop theta
     goal = tuple(map(float, goal))
     result = {"waypoints": None, "length": None, "error": None}
 
