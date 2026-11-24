@@ -1,5 +1,4 @@
-def prox():
-    global prox_horizontal, motor_left_target, motor_right_target, state
+def prox(v_left, v_right, prox_horizontal):
 
     w_l = [40,  20, -20, -20, -40]
     w_r = [-40, -20, -20,  20,  40]
@@ -7,19 +6,19 @@ def prox():
     # Scale factors for sensors and constant factor
     sensor_scale = 200
     
-    y = [0,0]
+    y = [v_left, v_right]
     x = [0,0,0,0,0]
         
-    if state != 0:
+    for i in range(len(x)):
+        # Get and scale inputs
+        x[i] = prox_horizontal[i] // sensor_scale
         
-        for i in range(len(x)):
-            # Get and scale inputs
-            x[i] = prox_horizontal[i] // sensor_scale
-            
-            # Compute outputs of neurons and set motor powers
-            y[0] = y[0] + x[i] * w_l[i]
-            y[1] = y[1] + x[i] * w_r[i]
+        # Compute outputs of neurons and set motor powers
+        y[0] = y[0] + x[i] * w_l[i]
+        y[1] = y[1] + x[i] * w_r[i]
     
     # Set motor powers
-    motor_left_target = y[0]
-    motor_right_target = y[1]
+    left_cmd = y[0]
+    right_cmd = y[1]
+
+    return left_cmd, right_cmd
