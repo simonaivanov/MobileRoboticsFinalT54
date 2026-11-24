@@ -1,7 +1,9 @@
 from itertools import combinations
+from global_navigation import plan_path
 from tictactoe import find_best_move
 import cv2
 import numpy as np
+from shapely.geometry import Polygon
 from skimage.transform import hough_line, hough_line_peaks
 
 
@@ -9,7 +11,7 @@ camera_id = 0 # identifiant de la caméra
 camera_width = 1920 # largeur souhaitée en pixels
 fps = 30 # fréquence souhaitée
 warmup_frames = 30*1  #nombre de frames ignorées au démarrage (pour stabilisation de la capture)
-threshold_grid = 110
+threshold_grid = 90
 grid_side_mm = 700
 
 
@@ -148,7 +150,8 @@ def detect_grid(frame):
         distances,
         min_distance=20,
         min_angle=15,
-        num_peaks=9
+        threshold = 0.30 * hough_space.max(),
+        num_peaks=8
     )
     # Convertir l'image binaire en BGR pour les annotations en couleur.
     annotated_binary = cv2.cvtColor(binary, cv2.COLOR_GRAY2BGR)
@@ -360,7 +363,7 @@ def detect_board(frame, H):
 
     Sorties :
         board    : matrice 3x3 ("cross", "square" ou None)
-        vertices : matrice Nx2 des sommets (X, Y) en mm
+        obstacles : un polygone par forme détectée, en mm
 
     Repère fixe :
         Origine : coin supérieur gauche
@@ -376,9 +379,9 @@ def detect_board(frame, H):
     )
     cv2.imshow("Image corrigee", rectified)
 
-    # Initialiser la matrice des formes et la liste des sommets
+    # Initialiser la matrice des formes et la liste des obstacles
     board = np.full((3, 3), None, dtype=object)
-    all_vertices = []
+    obstacles = []
 
     # Calculer les limites des neuf cases
     boundaries = np.rint(
@@ -403,47 +406,20 @@ def detect_board(frame, H):
             board[row, col] = shape
 
             if vertices is not None:
-                all_vertices.append(vertices + np.float32([x0, y0])) # Hema change extend in append to group obstacles point together 
-    
-    # # Convertir la liste en matrice Nx2
-    # all_vertices = np.asarray(
-    #     all_vertices, dtype=np.float32
-    # ).reshape(-1, 2)
+                vertices_mm = vertices + np.float32([x0, y0])
+                obstacles.append(Polygon(vertices_mm))
 
-    for i, v in enumerate(all_vertices):
-        print(f"obstacle {i}: {len(v)} vertices")
-        print(np.round(v, 1))
-
-    return board, all_vertices
+    return board, obstacles
 
 
+def get_goal_position(best_move):
+    """Renvoyer le centre de la case cible en millimètres."""
+    if best_move is None:
+        return None
 
-def get_goal_position(best_move, H, frame, vertices_mm):
-    """Afficher la cible et renvoyer (X, Y) en mm depuis le coin supérieur gauche."""
-    annotated = frame.copy()
-    to_camera = np.linalg.inv(H)
-    if len(vertices_mm):
-        camera_vertices = cv2.perspectiveTransform(
-            vertices_mm[None, :, :], to_camera
-        )[0]
-        for point in np.rint(camera_vertices).astype(int):
-            cv2.circle(annotated, tuple(point), 4, (0, 255, 0), -1)
-
-    goal_mm = None
-    if best_move is not None:
-        row, col = best_move
-        cell_size = grid_side_mm / 3
-        goal_mm = ((col + 0.5) * cell_size, (row + 0.5) * cell_size)
-        center_camera = cv2.perspectiveTransform(
-            np.float32([[goal_mm]]), to_camera
-        )[0, 0]
-        cv2.drawMarker(
-            annotated, tuple(np.rint(center_camera).astype(int)), (0, 0, 255),
-            cv2.MARKER_CROSS, 24, 3, cv2.LINE_AA
-        )
-
-    cv2.imshow("Cible et sommets", annotated)
-    return goal_mm
+    row, col = best_move
+    cell_size = grid_side_mm / 3
+    return (col + 0.5) * cell_size, (row + 0.5) * cell_size
 
 
 # ==========================================================
@@ -459,15 +435,17 @@ def initialize_vision(frame):
 
     Sortie :
         H : homographie vers la grille redressée
+        obstacles : polygones détectés dans la grille, en mm
+        goal_mm : centre de la case cible en mm, ou None
     """
     grid_points = detect_grid(frame)
     H = compute_homography(grid_points, frame)
 
-    board, vertices_mm = detect_board(frame, H)
+    board, obstacles = detect_board(frame, H)
     best_move = find_best_move(board)
-    goal_mm = get_goal_position(best_move, H, frame, vertices_mm)
+    goal_mm = get_goal_position(best_move)
 
-    return H, vertices_mm, goal_mm
+    return H, obstacles, goal_mm
 
 
 # ==========================================================
@@ -478,12 +456,11 @@ THYMIO_MARKER_ID = 0
 
 
 def detect_thymio(frame, H, detector=None):
-    """Afficher le suivi et renvoyer (x, y, theta) en mm et radians, ou None."""
+    """Renvoyer (x, y, theta) en mm et radians, ou None."""
     if detector is None:
         dictionary = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
         detector = cv2.aruco.ArucoDetector(dictionary)
 
-    annotated = frame.copy()
     corners, ids, _ = detector.detectMarkers(frame)
     points = None
     if ids is not None:
@@ -491,27 +468,33 @@ def detect_thymio(frame, H, detector=None):
             if marker_id == THYMIO_MARKER_ID:
                 points = marker_corners.reshape(4, 2)
                 break
-    thymio_pos = None
-    label = "Thymio non detecte"
-    if points is not None:
-        points_mm = cv2.perspectiveTransform(points[None, :, :], H)[0]
-        x, y = points_mm.mean(axis=0)
-        dx, dy = points_mm[1] - points_mm[0]
-        theta = np.arctan2(dy, dx)
-        thymio_pos = float(x), float(y), float(theta)
+    if points is None:
+        return None
 
-        arrow_mm = np.float32([[[x, y], [x + 50 * np.cos(theta), y + 50 * np.sin(theta)]]])
-        center, end = np.rint(
-            cv2.perspectiveTransform(arrow_mm, np.linalg.inv(H))[0]
-        ).astype(int)
-        cv2.circle(annotated, tuple(center), 5, (0, 0, 255), -1)
-        cv2.arrowedLine(annotated, tuple(center), tuple(end), (255, 0, 0), 3)
+    points_mm = cv2.perspectiveTransform(points[None, :, :], H)[0]
+    x, y = points_mm.mean(axis=0)
+    dx, dy = points_mm[1] - points_mm[0]
+    return float(x), float(y), float(np.arctan2(dy, dx))
+
+
+def project_to_camera(points_mm, to_camera):
+    """Projeter des coordonnées en mm vers des pixels entiers."""
+    points = np.asarray(points_mm, dtype=np.float32).reshape(1, -1, 2)
+    return np.rint(cv2.perspectiveTransform(points, to_camera)[0]).astype(np.int32)
+
+
+def draw_thymio(frame, thymio_pos, to_camera):
+    label = "Thymio non detecte"
+    if thymio_pos is not None:
+        x, y, theta = thymio_pos
+        arrow_mm = [(x, y), (x + 50 * np.cos(theta), y + 50 * np.sin(theta))]
+        center, end = project_to_camera(arrow_mm, to_camera)
+        cv2.circle(frame, tuple(center), 5, (0, 0, 255), -1)
+        cv2.arrowedLine(frame, tuple(center), tuple(end), (255, 0, 0), 3)
         label = f"Thymio ({x:.1f}, {y:.1f}) mm | {np.degrees(theta):.1f} deg"
 
-    cv2.putText(annotated, label, (15, 30), cv2.FONT_HERSHEY_SIMPLEX,
+    cv2.putText(frame, label, (15, 30), cv2.FONT_HERSHEY_SIMPLEX,
                 0.7, (0, 255, 0), 2, cv2.LINE_AA)
-    cv2.imshow("Thymio - Vision", annotated)
-    return thymio_pos
 
 
 # ==========================================================
@@ -536,33 +519,65 @@ def main():
         if not ret:
             raise RuntimeError("Impossible de lire l'image")
 
-        H, vertices_mm, goal_mm = initialize_vision(frame)
-        print(H, vertices_mm, goal_mm)
+        H, obstacles, goal_mm = initialize_vision(frame)
         dictionary = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
         detector = cv2.aruco.ArucoDetector(dictionary)
+
+        # Détecter la pose de départ sur l'image d'initialisation.
+        thymio_pos = detect_thymio(frame, H, detector)
+        waypoints_mm = None
+        if goal_mm is None:
+            print("Chemin indisponible : aucune case cible.")
+        elif thymio_pos is None:
+            print("Chemin indisponible : Thymio absent de l'image initiale.")
+        else:
+            path_result = plan_path(
+                obstacles, thymio_pos, goal_mm,
+                arena_w=grid_side_mm, arena_h=grid_side_mm,
+            )
+            if path_result["error"]:
+                print(path_result["error"])
+            else:
+                waypoints_mm = path_result["waypoints"]
+                print(f"Chemin ({path_result['length']:.1f} mm) : {waypoints_mm}")
+
+        to_camera = np.linalg.inv(H)
+        obstacle_pixels = [
+            project_to_camera(obstacle.exterior.coords[:-1], to_camera)
+            for obstacle in obstacles
+        ]
+        goal_pixel = None if goal_mm is None else project_to_camera([goal_mm], to_camera)[0]
+        path_pixels = None if not waypoints_mm else project_to_camera(waypoints_mm, to_camera)
 
         # --------------------------------------------------
         # BOUCLE TEMPS REEL
         # --------------------------------------------------
 
         while True:
-
-            thymio_pos = detect_thymio(frame, H, detector)
-            print(thymio_pos)
-            key = cv2.waitKey(1) & 0xFF
-
-            if key == ord("q"):
-                break
-            if key == ord("r"):
-                try:
-                    H, vertices_mm, goal_mm = initialize_vision(frame)
-                    print("Vision reinitialisee")
-                except GridNotDetectedError as error:
-                    print(error, flush=True)
-
             ret, frame = cap.read()
             if not ret:
                 raise RuntimeError("Impossible de lire l'image de la caméra")
+
+            thymio_pos = detect_thymio(frame, H, detector)
+            if path_pixels is not None:
+                if len(path_pixels) > 1:
+                    cv2.polylines(frame, [path_pixels], False, (0, 255, 255), 3, cv2.LINE_AA)
+                for point in path_pixels:
+                    cv2.circle(frame, tuple(point), 4, (0, 255, 255), -1)
+
+            for vertices in obstacle_pixels:
+                for point in vertices:
+                    cv2.circle(frame, tuple(point), 4, (0, 255, 0), -1)
+
+            if goal_pixel is not None:
+                cv2.drawMarker(frame, tuple(goal_pixel), (0, 0, 255),
+                               cv2.MARKER_CROSS, 24, 3, cv2.LINE_AA)
+
+            draw_thymio(frame, thymio_pos, to_camera)
+            cv2.imshow("Thymio - Vision", frame)
+
+            if cv2.waitKey(1) & 0xFF == ord("q"):
+                break
 
     except GridNotDetectedError as error:
         print(error, flush=True)
