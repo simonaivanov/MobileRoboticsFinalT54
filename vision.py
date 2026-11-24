@@ -5,11 +5,11 @@ import numpy as np
 from skimage.transform import hough_line, hough_line_peaks
 
 
-camera_id = 0 # identifiant de la caméra
+camera_id = 1 # identifiant de la caméra
 camera_width = 1920 # largeur souhaitée en pixels
 fps = 30 # fréquence souhaitée
 warmup_frames = 30*1  #nombre de frames ignorées au démarrage (pour stabilisation de la capture)
-threshold_grid = 110
+threshold_grid = 80
 grid_side_mm = 700
 
 
@@ -148,7 +148,8 @@ def detect_grid(frame):
         distances,
         min_distance=20,
         min_angle=15,
-        num_peaks=9
+        threshold= 0.30,
+        num_peaks=8
     )
     # Convertir l'image binaire en BGR pour les annotations en couleur.
     annotated_binary = cv2.cvtColor(binary, cv2.COLOR_GRAY2BGR)
