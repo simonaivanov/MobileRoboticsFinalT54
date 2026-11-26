@@ -7,7 +7,7 @@ from shapely.geometry import Polygon
 from skimage.transform import hough_line, hough_line_peaks
 
 
-camera_id = 1 # identifiant de la caméra
+camera_id = 0 # identifiant de la caméra
 camera_width = 1920 # largeur souhaitée en pixels
 fps = 30 # fréquence souhaitée
 warmup_frames = 30*1  #nombre de frames ignorées au démarrage (pour stabilisation de la capture)
@@ -525,6 +525,7 @@ def main():
 
         # Détecter la pose de départ sur l'image d'initialisation.
         thymio_pos = detect_thymio(frame, H, detector)
+        
         waypoints_mm = None
         if goal_mm is None:
             print("Chemin indisponible : aucune case cible.")
@@ -552,13 +553,13 @@ def main():
         # --------------------------------------------------
         # BOUCLE TEMPS REEL
         # --------------------------------------------------
-
         while True:
             ret, frame = cap.read()
             if not ret:
                 raise RuntimeError("Impossible de lire l'image de la caméra")
 
             thymio_pos = detect_thymio(frame, H, detector)
+            print(thymio_pos)
             if path_pixels is not None:
                 if len(path_pixels) > 1:
                     cv2.polylines(frame, [path_pixels], False, (0, 255, 255), 3, cv2.LINE_AA)
