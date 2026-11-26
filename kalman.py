@@ -10,13 +10,14 @@ dist_btwn_wheels = 95 # mm, TO BE CALIBRATED!
 Ts = 0.1 # sampling period
 
 # --- parameters to tune ---
-qp = 0.09 # variance on position state, need to tune with speed, if thymio is about 30 mm/s,
-# then error is about 10% so 3mm and for 1 Ts that is 0.3mm so 0.3^2 is 0.09mm^2
-rp = 25 # variance on position measurement from the camera, std abuot 5mm
+qp = 0.0784 # variance on position state, need to tune with speed, if thymio is about 28 mm/s,
+# then error is about 10% so 2.8mm and for 0.1 Ts that is 0.28mm so 0.28^2 is 0.0784mm^2
+rpx = 0.024870551616 # variance on position x measurement from the camera, std abuot 0.157704mm
+rpy = 0.051717127396 # variance on position y measurement, std about 0.227414
 # q_nu = 5 # variance on speed state, taken as an estimate from the exercise 8
 # r_nu = 5 # variance on speed measurement, taken as estimate from excercise 8
-rt = 0.0025 # variance on camera theta measurement, std about 0.05rad
-qt = 0.0025 # variance on state theta estimate 0.05rad = about 3 degrees error
+rt = 0.000045306361 # variance on camera theta measurement, std about 0.006731rad
+qt = 0.000289 # variance on state theta estimate 0.017rad = about 1 degrees error, squared
 # so 0.05^2 is 0.0025
 
 
@@ -64,7 +65,7 @@ def kalman_filter_main(x_est_prev, P_est_prev, vl_raw, vr_raw, robot_pose_cam, d
                       [robot_pose_cam[1]],
                       [robot_pose_cam[2]]])
         H = np.eye(3) # H defines what part the measurement is actually relevant to (position and velocity or just velocity for example)
-        R = np.array([[rp, 0, 0], [0, rp, 0], [0, 0, rt]]) # the covariance matrix of the measurement representing the uncertainty in the measurement value which we define
+        R = np.array([[rpx, 0, 0], [0, rpy, 0], [0, 0, rt]]) # the covariance matrix of the measurement representing the uncertainty in the measurement value which we define
         i = y - np.dot(H, x_est_a_priori)
         i[2,0] = wrap_angle(i[2,0])
         S = np.dot(H, np.dot(P_est_a_priori, H.T)) + R # H.T is defining which parts of the state estimate the measurement is allowed to correct

@@ -305,12 +305,12 @@ def draw_path(frame, waypoints, samples, to_camera):
     return frame
 
 
-def draw_legend(frame):
-    """Small legend in the top left corner."""
+def draw_legend(frame, top=60):
+    """Small legend in the top left corner, starting at y = top (below the Thymio label)."""
     items = [("real obstacles", (255, 0, 0)), ("inflated obstacles", (0, 165, 255)),
              ("waypoints", (0, 0, 255)), ("sampled points", (255, 255, 0))]
     for i, (text, color) in enumerate(items):
-        y = 25 + 25 * i
+        y = top + 25 * i
         cv2.circle(frame, (20, y - 5), 7, color, -1)
         cv2.putText(frame, text, (35, y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
     return frame
