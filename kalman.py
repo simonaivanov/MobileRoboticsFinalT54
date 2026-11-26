@@ -5,13 +5,13 @@ import matplotlib.pyplot as plt
 # speed is about 20mm/s this means that per sampling period the robot moves about 2mm
 # we take a small percentage of this to be the error/step so we chose 0.2 which is about 10%
 # so we decide that sqrt(qp) will be 0.2 so qp is 0.04mm^2
-speed_conv_factor = 0.410958904109589 # TO BE CALIBRATED
+speed_conv_factor = 0.28626609442060086 #0.3205128205128205 # TO BE CALIBRATED 0.2832618025751073
 dist_btwn_wheels = 95 # mm, TO BE CALIBRATED!
 Ts = 0.1 # sampling period
 
 # --- parameters to tune ---
-qp = 0.25 # variance on position state, need to tune with speed, if thymio is 50 mm/s,
-# then error is about 10% so 5 and for 1 Ts that is 0.5mm so 0.5^2 is 0.25mm^2
+qp = 0.09 # variance on position state, need to tune with speed, if thymio is about 30 mm/s,
+# then error is about 10% so 3mm and for 1 Ts that is 0.3mm so 0.3^2 is 0.09mm^2
 rp = 25 # variance on position measurement from the camera, std abuot 5mm
 # q_nu = 5 # variance on speed state, taken as an estimate from the exercise 8
 # r_nu = 5 # variance on speed measurement, taken as estimate from excercise 8
