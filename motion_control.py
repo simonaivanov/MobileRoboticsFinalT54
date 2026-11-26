@@ -1,8 +1,12 @@
 from kalman import wrap_angle
-from global_navigation import plan_path
 from local_navigation import prox
-from vision import detect_thymio
 import numpy as np
+
+tolerance = 10  # distance tolerance to consider goal reached
+gain_angle = 1.0  # gain for angle correction
+gain_distance = 0.5  # gain for distance correction
+osbtThrH = 20  # high threshold for obstacle detection
+obstThrL = 10  # low threshold for obstacle detection
 
 
 def tracking(pos_x, pos_y, angle, heading_x, heading_y):
@@ -16,22 +20,19 @@ def tracking(pos_x, pos_y, angle, heading_x, heading_y):
     
     return angle_diff, drho 
 
-def controller(pos_x, pos_y, angle, heading_x, heading_y, Gain_angle, Gainp, v_left, v_right):
+def controller(pos_x, pos_y, angle, heading_x, heading_y, v_left, v_right):
     # compute the speed commands based on the angle difference and distance to the goal
     angle_diff, drho = tracking(pos_x, pos_y, angle, heading_x, heading_y)
-    left_cmd = v_left - Gain_angle * angle_diff + Gainp * drho
-    right_cmd = v_right + Gain_angle * angle_diff + Gainp * drho
+    left_cmd = v_left - gain_angle * angle_diff + gain_distance * drho
+    right_cmd = v_right + gain_angle * angle_diff + gain_distance * drho
     
     return left_cmd, right_cmd
 
-def motion(obstacles, thymio_pos, goal, arena_w, arena_h, frame, H, v_left, v_right, 
-           obstThrH, obstThrL, Gain_angle, Gainp, tolerance, i, state, capteurs):
-    result = plan_path(obstacles, thymio_pos, goal, arena_w, arena_h, algo="A*")
-    path = result["waypoints"]
-    heading_x, heading_y = path[i]
+def motion(samples, thymio, v_left, v_right, i, state, capteurs):
+    heading_x, heading_y = samples[i]
     
     # Get updated position from vision
-    pos_x, pos_y, angle = detect_thymio(frame, H)
+    pos_x, pos_y, angle = thymio
 
     # Calculate distance to current waypoint
     angle_diff, drho = tracking(pos_x, pos_y, angle, heading_x, heading_y)
@@ -41,8 +42,8 @@ def motion(obstacles, thymio_pos, goal, arena_w, arena_h, frame, H, v_left, v_ri
 
         i += 1
 
-        if i >= len(path):
-            return i  # goal reached
+        if i >= len(samples):
+            return 0, 0, i  # goal reached
 
 
     if state == 0: 
@@ -55,7 +56,7 @@ def motion(obstacles, thymio_pos, goal, arena_w, arena_h, frame, H, v_left, v_ri
             
     if  state == 0 :
         # goal tracking: turn toward the goal
-        left_cmd, right_cmd = controller(pos_x, pos_y, angle, heading_x, heading_y, Gain_angle, Gainp, v_left, v_right)
+        left_cmd, right_cmd = controller(pos_x, pos_y, angle, heading_x, heading_y, v_left, v_right)
     
     else:
         # obstacle avoidance
@@ -66,4 +67,5 @@ def motion(obstacles, thymio_pos, goal, arena_w, arena_h, frame, H, v_left, v_ri
     right_cmd = np.clip(right_cmd, -300, 300)
 
     return left_cmd, right_cmd, i 
+
 
