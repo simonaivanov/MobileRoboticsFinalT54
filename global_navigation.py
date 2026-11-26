@@ -10,14 +10,14 @@ from shapely.ops import unary_union, nearest_points
 
 EPS = 1e-6  # mm, numerical tolerance for geometric tests
 ROBOT_W = 110            # mm, a mesurer sur le Thymio
-MARGIN = 20                    # mm, marge de securite
+MARGIN = 2                   # mm, marge de securite
 INFLATION = ROBOT_W /2 + MARGIN
 
 # 1. Free space
 def build_free_space(obstacles, arena_w, arena_h, inflation=INFLATION):
     """Space reachable by the robot centre: shrunk arena minus inflated obstacles."""
     inflated_obstacles = [obs.buffer(inflation, join_style="mitre") for obs in obstacles]
-    shrunk_arena = box(0, 0, arena_w, arena_h).buffer(-inflation, join_style="mitre")
+    shrunk_arena = box(0, 0, arena_w, arena_h).buffer(100, join_style="mitre")
     free_space = shrunk_arena.difference(unary_union(inflated_obstacles))
     return free_space, inflated_obstacles, shrunk_arena
 
